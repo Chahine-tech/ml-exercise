@@ -2,103 +2,94 @@ import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+import random
 
-# Chemin vers les données (à ajuster selon votre configuration)
+# Path to data (adjust according to your configuration)
 import kagglehub
 path = kagglehub.dataset_download("sriharshabsprasad/movielens-dataset-100k-ratings")
 movies_path = f"{path}/ml-latest-small/movies.csv"
 
-# 1. Charger les données
-print("Chargement des données...")
+# 1. Load data
+print("Loading data...")
 movies_df = pd.read_csv(movies_path)
 
-# Afficher quelques infos sur les données
-print(f"Nombre total de films: {len(movies_df)}")
+# Display some information about the data
+print(f"Total number of movies: {len(movies_df)}")
+print("\nSample of available movies:")
 print(movies_df.head())
 
-# 2. Préparation des données pour TF-IDF
-# Dans MovieLens, nous n'avons pas de descriptions textuelles, mais nous avons les genres
-# Nous utiliserons les genres comme "contenu" pour notre système de recommandation
-print("\nPréparation des données pour TF-IDF...")
+# 2. Prepare data for TF-IDF
+# In MovieLens, we don't have text descriptions, but we have genres
+# We will use genres as "content" for our recommendation system
+print("\nPreparing data for TF-IDF...")
 
-# 3. Utilisation de TF-IDF pour représenter les genres des films
+# 3. Use TF-IDF to represent movie genres
 tfidf = TfidfVectorizer(stop_words='english')
 tfidf_matrix = tfidf.fit_transform(movies_df['genres'].str.replace('|', ' '))
 
-print(f"Dimensions de la matrice TF-IDF: {tfidf_matrix.shape}")
-print(f"Nombre de caractéristiques extraites: {len(tfidf.get_feature_names_out())}")
-print("Termes extraits des genres:", tfidf.get_feature_names_out())
+print(f"TF-IDF matrix dimensions: {tfidf_matrix.shape}")
+print(f"Number of extracted features: {len(tfidf.get_feature_names_out())}")
+print("Terms extracted from genres:", tfidf.get_feature_names_out())
 
-# 4. Calcul de la similarité entre les films
-print("\nCalcul de la similarité entre les films...")
+# 4. Calculate similarity between movies
+print("\nCalculating similarity between movies...")
 cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
-print(f"Dimensions de la matrice de similarité: {cosine_sim.shape}")
+print(f"Similarity matrix dimensions: {cosine_sim.shape}")
 
-# Création d'un DataFrame pour faciliter les recherches
+# Create a DataFrame to facilitate searches
 indices = pd.Series(movies_df.index, index=movies_df['title']).drop_duplicates()
 
-# 5. Fonction de recommandation de films similaires
+# 5. Function to recommend similar movies
 def get_recommendations(title, cosine_sim=cosine_sim, df=movies_df, indices=indices):
-    # Obtenir l'index du film
+    # Get the movie index
     try:
         idx = indices[title]
     except KeyError:
-        print(f"Film '{title}' non trouvé dans la base de données.")
+        print(f"Movie '{title}' not found in the database.")
         return pd.DataFrame()
     
-    # Obtenir les scores de similarité avec tous les autres films
+    # Get similarity scores with all other movies
     sim_scores = list(enumerate(cosine_sim[idx]))
     
-    # Trier les films par score de similarité
+    # Sort movies by similarity score
     sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
     
-    # Obtenir les 6 films les plus similaires (le premier est le film lui-même)
+    # Get the 6 most similar movies (the first one is the movie itself)
     sim_scores = sim_scores[1:6]
     
-    # Obtenir les indices des films
+    # Get movie indices
     movie_indices = [i[0] for i in sim_scores]
     
-    # Retourner les 5 films les plus similaires avec leurs scores
+    # Return the 5 most similar movies with their scores
     result = df.iloc[movie_indices].copy()
     result['similarity_score'] = [i[1] for i in sim_scores]
     return result[['title', 'genres', 'similarity_score']]
 
-# 6. Tester le système avec quelques films populaires
-print("\nDémonstration du système de recommandation:\n")
+# 6. Test the system with random movies from the dataset
+print("\nTesting the recommendation system with random movies from the dataset:\n")
 
-test_movies = [
-    "Toy Story (1995)",
-    "Pulp Fiction (1994)",
-    "Matrix, The (1999)",
-    "Shawshank Redemption, The (1994)",
-    "Star Wars: Episode IV - A New Hope (1977)"
-]
+# Select 5 random movies from the dataset
+random_movies = movies_df.sample(n=5, random_state=42)
 
-for movie in test_movies:
-    try:
-        print(f"\nFilms similaires à '{movie}':")
-        recommendations = get_recommendations(movie)
-        if not recommendations.empty:
-            print(recommendations)
-    except Exception as e:
-        print(f"Erreur avec le film '{movie}': {e}")
-        # Vérifier si le film existe dans le dataset
-        if movie not in indices:
-            similar_titles = movies_df[movies_df['title'].str.contains(movie.split('(')[0].strip())]
-            if not similar_titles.empty:
-                print(f"Films avec un titre similaire trouvés: {similar_titles['title'].tolist()}")
+for _, movie in random_movies.iterrows():
+    title = movie['title']
+    print(f"\nMovies similar to '{title}':")
+    recommendations = get_recommendations(title)
+    if not recommendations.empty:
+        print(recommendations)
+    print("-" * 80)
 
-# 7. Avantages et limitations de l'approche basée sur le contenu
-print("\nAvantages et limitations de l'approche basée sur le contenu:")
-print("\nAvantages:")
-print("1. Pas de démarrage à froid pour les nouveaux éléments: peut recommander des items sans historique d'utilisation")
-print("2. Indépendant des autres utilisateurs: peut faire des recommandations personnalisées sans données d'autres utilisateurs")
-print("3. Bonne transparence: peut expliquer pourquoi un item a été recommandé")
-print("4. Peut recommander des items de niche ou non populaires si leurs attributs correspondent aux préférences")
+# 7. Advantages and limitations of content-based approach
+print("\nAdvantages and limitations of content-based approach:")
+print("\nAdvantages:")
+print("1. No cold start for new items: can recommend items without usage history")
+print("2. Independent of other users: can make personalized recommendations without other users' data")
+print("3. Good transparency: can explain why an item was recommended")
+print("4. Can recommend niche or unpopular items if their attributes match preferences")
 
 print("\nLimitations:")
-print("1. Démarrage à froid pour les nouveaux utilisateurs: difficulté à faire des recommandations sans profil établi")
-print("2. Sur-spécialisation/manque de diversité: tendance à recommander des items très similaires")
-print("3. Limité par les attributs/métadonnées disponibles: qualité dépend de la richesse des descriptions")
-print("4. Ne capture pas les préférences qui ne sont pas exprimées dans les attributs des items")
-print("5. Ne profite pas de la sagesse collective comme le font les approches collaboratives") 
+print("1. Cold start for new users: difficulty in making recommendations without established profile")
+print("2. Over-specialization/lack of diversity: tendency to recommend very similar items")
+print("3. Limited by available attributes/metadata: quality depends on richness of descriptions")
+print("4. Does not capture preferences that are not expressed in item attributes")
+print("5. Does not benefit from collective wisdom like collaborative approaches") 
